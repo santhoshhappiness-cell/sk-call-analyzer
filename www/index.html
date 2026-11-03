@@ -102,21 +102,29 @@
     }
 
     async function scanRecordings() {
-      log('Scanning...');
+      log('Starting scan...');
       try {
-        const { Filesystem, Directory } = await import('@capacitor/filesystem');
-
-        // Request permission
-        const perm = await Filesystem.requestPermissions();
-        log('Permission: ' + (perm.publicStorage || 'unknown'));
-
-        if (perm.publicStorage !== 'granted') {
-          log('Permission denied. Allow Files and media in Settings.');
-          alert('Please allow Files and media permission for this app in phone Settings, then try again.');
+        // Check if Capacitor is available
+        if (!window.Capacitor) {
+          log('Capacitor not loaded.');
+          alert('Capacitor plugin not available.\n\nPlease run npx cap sync and reinstall the app.');
           return;
         }
 
-        // Scan known paths
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+
+        log('Requesting permission...');
+        const perm = await Filesystem.requestPermissions();
+        log('Permission result: ' + JSON.stringify(perm));
+
+        if (!perm || perm.publicStorage !== 'granted') {
+          log('Permission not granted.');
+          alert('Storage permission required.\n\nGo to Settings → Apps → SK Call Analyzer → Permissions → Storage → Allow.');
+          return;
+        }
+
+        log('Permission OK. Scanning folders...');
+
         const paths = [
           'Music/Recordings/Call Recordings',
           'Recordings/Call Recordings',
@@ -149,8 +157,8 @@
         }
 
         if (found.length === 0) {
-          log('No .amr files found in common folders.');
-          alert('No .amr recordings found.\n\nCheck that files are in Music/Recordings/Call Recordings.');
+          log('No .amr files found.');
+          alert('No .amr recordings found in common folders.');
           return;
         }
 
@@ -177,12 +185,12 @@
 
         saveCalls();
         render();
-        log(added > 0 ? `Added ${added} new recording(s).` : 'No new recordings.');
+        log(added > 0 ? `Added ${added} new recording(s).` : 'No new recordings found.');
 
       } catch (err) {
         console.error(err);
         log('Error: ' + (err.message || err));
-        alert('Could not scan files. Make sure storage permission is allowed.');
+        alert('Plugin error: ' + (err.message || err) + '\n\nTry running npx cap sync and reinstalling the app.');
       }
     }
 
