@@ -1,0 +1,14 @@
+{
+  "name": "sk-call-analyzer",
+  "version": "1.0.0",
+  "description": "SK Call Analyzer",
+  "scripts": {
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/cli": "^6.0.0"
+  }
+}
