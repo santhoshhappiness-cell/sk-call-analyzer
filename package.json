@@ -1,14 +1,12 @@
 {
   "name": "sk-call-analyzer",
   "version": "1.0.0",
-  "description": "SK Call Analyzer",
-  "scripts": {
-    "cap:sync": "npx cap sync",
-    "cap:open": "npx cap open android"
-  },
+  "description": "SK Call Analyzer - detects call recordings",
   "dependencies": {
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/cli": "^6.0.0"
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/filesystem": "^6.0.1",
+    "@capacitor/preferences": "^6.0.2"
   }
 }

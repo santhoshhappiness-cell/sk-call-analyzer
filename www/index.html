@@ -2,86 +2,191 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>SK Call Analyzer</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; background: #f5f5f5; }
-    header { background: #1a73e8; color: white; padding: 16px; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #f0f2f5; color: #202124; }
+    header { background: #1a73e8; color: white; padding: 16px; position: sticky; top: 0; z-index: 10; }
+    header h1 { margin: 0; font-size: 1.3rem; }
     .tabs { display: flex; background: white; border-bottom: 1px solid #ddd; }
-    .tab { flex: 1; padding: 14px; border: none; background: transparent; font-size: 1rem; }
-    .tab.active { color: #1a73e8; border-bottom: 3px solid #1a73e8; font-weight: bold; }
-    .card { background: white; margin: 12px; padding: 14px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .score { float: right; background: #e8f0fe; color: #1a73e8; padding: 2px 8px; border-radius: 12px; }
-    .status { font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; }
+    .tab { flex: 1; padding: 14px 8px; border: none; background: transparent; font-size: 0.95rem; cursor: pointer; }
+    .tab.active { color: #1a73e8; border-bottom: 3px solid #1a73e8; font-weight: 600; }
+    .actions { padding: 12px; display: flex; gap: 8px; }
+    button.action { flex: 1; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-size: 0.95rem; }
+    button.action.secondary { background: #5f6368; }
+    #list { padding: 0 12px 20px; }
+    .card { background: white; margin-bottom: 12px; padding: 14px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+    .score { float: right; background: #e8f0fe; color: #1a73e8; padding: 2px 10px; border-radius: 12px; font-weight: 600; font-size: 0.9rem; }
+    .status { display: inline-block; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; margin-top: 6px; }
     .pending { background: #fef7e0; color: #b06000; }
     .uploaded { background: #e6f4ea; color: #137333; }
-    button.scan { margin: 12px; padding: 12px 16px; background: #1a73e8; color: white; border: none; border-radius: 8px; width: calc(100% - 24px); }
+    .analyzed { background: #e8f0fe; color: #1a73e8; }
+    .empty { text-align: center; color: #5f6368; padding: 40px 20px; }
+    .log { font-size: 0.85rem; color: #5f6368; padding: 8px 12px; background: #fff; margin: 0 12px 12px; border-radius: 8px; }
   </style>
 </head>
 <body>
-  <header><h1>SK Call Analyzer</h1></header>
+  <header>
+    <h1>SK Call Analyzer</h1>
+  </header>
+
   <nav class="tabs">
     <button class="tab active" onclick="switchTab('all', this)">All Calls</button>
     <button class="tab" onclick="switchTab('pending', this)">Pending</button>
     <button class="tab" onclick="switchTab('high', this)">High Score</button>
   </nav>
-  <button class="scan" onclick="scanRecordings()">Scan for New Recordings</button>
+
+  <div class="actions">
+    <button class="action" onclick="requestPermissionAndScan()">Scan Recordings</button>
+    <button class="action secondary" onclick="clearList()">Clear List</button>
+  </div>
+
+  <div id="statusLog" class="log">Ready. Tap "Scan Recordings" to request permission and look for .amr files.</div>
   <div id="list"></div>
 
-  <script>
-    let calls = JSON.parse(localStorage.getItem('calls') || '[]');
-    let current = 'all';
+  <script type="module">
+    import { Filesystem, Directory } from '@capacitor/filesystem';
+
+    let calls = JSON.parse(localStorage.getItem('sk_calls') || '[]');
+    let currentTab = 'all';
+
+    function log(msg) {
+      document.getElementById('statusLog').textContent = msg;
+      console.log(msg);
+    }
+
+    function saveCalls() {
+      localStorage.setItem('sk_calls', JSON.stringify(calls));
+    }
 
     function switchTab(tab, btn) {
       document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      current = tab;
+      currentTab = tab;
       render();
     }
 
     function getFiltered() {
-      let filtered = calls.slice();
-      if (current === 'pending') filtered = filtered.filter(c => c.status !== 'uploaded');
-      if (current === 'high') filtered = filtered.filter(c => (c.score || 0) >= 8);
-      return filtered;
+      let filtered = [...calls];
+      if (currentTab === 'pending') {
+        filtered = filtered.filter(c => c.status !== 'uploaded' && c.status !== 'analyzed');
+      } else if (currentTab === 'high') {
+        filtered = filtered.filter(c => (c.score || 0) >= 8);
+      }
+      return filtered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     }
 
     function render() {
       const list = document.getElementById('list');
       const filtered = getFiltered();
       if (filtered.length === 0) {
-        list.innerHTML = '<div style="text-align:center;padding:40px;color:#666;">No calls yet. Tap Scan for New Recordings.</div>';
+        list.innerHTML = '<div class="empty">No calls in this tab.<br>Tap Scan Recordings to detect .amr files.</div>';
         return;
       }
       list.innerHTML = filtered.map(c => `
         <div class="card">
-          <span class="score">${c.score || '-'}/10</span>
-          <strong>${c.phone || c.name}</strong><br>
+          <span class="score">${c.score != null ? c.score + '/10' : '-'}</span>
+          <strong>${c.phone || c.name || 'Unknown'}</strong><br>
           <small>${c.date || ''} ${c.time || ''}</small><br>
-          ${c.summary || 'Waiting for analysis'}<br>
+          <div>${c.summary || 'Waiting for analysis'}</div>
           <span class="status ${c.status || 'pending'}">${(c.status || 'pending').toUpperCase()}</span>
         </div>
       `).join('');
     }
 
-    function scanRecordings() {
-      alert('Scanning Call Recordings folder for new .amr files...');
-      const demo = {
-        id: Date.now().toString(),
-        name: 'Call_' + new Date().toLocaleTimeString(),
-        phone: 'New Recording',
-        date: new Date().toLocaleDateString(),
-        time: new Date().toLocaleTimeString(),
-        status: 'pending',
-        score: null,
-        summary: 'Detected .amr recording (demo)'
-      };
-      calls.unshift(demo);
-      localStorage.setItem('calls', JSON.stringify(calls));
-      render();
-    }
+    window.clearList = function() {
+      if (confirm('Clear all calls from the list?')) {
+        calls = [];
+        saveCalls();
+        render();
+        log('List cleared.');
+      }
+    };
 
+    window.requestPermissionAndScan = async function() {
+      log('Requesting storage permission...');
+      try {
+        // Try common call recording paths
+        const possiblePaths = [
+          'Music/Recordings/Call Recordings',
+          'Recordings/Call',
+          'Sounds/Call',
+          'Call',
+          'Recordings'
+        ];
+
+        let foundFiles = [];
+        let usedPath = '';
+
+        for (const relPath of possiblePaths) {
+          try {
+            const result = await Filesystem.readdir({
+              path: relPath,
+              directory: Directory.ExternalStorage
+            });
+            const amrFiles = (result.files || []).filter(f => 
+              (f.name || f).toLowerCase().endsWith('.amr')
+            );
+            if (amrFiles.length > 0) {
+              foundFiles = amrFiles;
+              usedPath = relPath;
+              break;
+            }
+          } catch (e) {
+            // Path not found or no permission, continue
+          }
+        }
+
+        if (foundFiles.length === 0) {
+          log('No .amr files found in common locations. Permission may be needed or folder path is different.');
+          alert('Could not find Call Recordings folder automatically.\n\nPlease make sure the app has storage permission.\nGo to Settings → Apps → SK Call Analyzer → Permissions → Files and media → Allow.');
+          return;
+        }
+
+        log(`Found ${foundFiles.length} .amr file(s) in ${usedPath}`);
+
+        // Add new ones that are not already in the list
+        let added = 0;
+        for (const file of foundFiles) {
+          const name = file.name || file;
+          const exists = calls.some(c => c.name === name);
+          if (!exists) {
+            const now = new Date();
+            calls.unshift({
+              id: Date.now() + Math.random().toString(36).slice(2),
+              name: name,
+              phone: name.replace(/\.amr$/i, '').replace(/[_-]/g, ' '),
+              date: now.toLocaleDateString(),
+              time: now.toLocaleTimeString(),
+              timestamp: Date.now(),
+              summary: 'Detected .amr recording. Ready for upload & analysis.',
+              status: 'pending',
+              score: null,
+              path: usedPath + '/' + name
+            });
+            added++;
+          }
+        }
+
+        if (added > 0) {
+          saveCalls();
+          log(`Added ${added} new recording(s). Total: ${calls.length}`);
+        } else {
+          log('No new recordings found. All existing files already in the list.');
+        }
+        render();
+
+      } catch (err) {
+        console.error(err);
+        log('Error: ' + (err.message || err));
+        alert('Permission error or folder not accessible.\n\nPlease allow Files and media permission for this app in phone Settings, then try again.');
+      }
+    };
+
+    // Initial render
     render();
+    log('App ready. Tap "Scan Recordings" to look for call recordings.');
   </script>
 </body>
 </html>
