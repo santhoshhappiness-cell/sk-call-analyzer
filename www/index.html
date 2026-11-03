@@ -47,6 +47,9 @@
   <div id="list"></div>
 
   <script>
+    const GOOGLE_CLIENT_ID = '380496148747-4fdgm5b4bmt2r06vm2h17g55hrqj60h4.apps.googleusercontent.com';
+    const DRIVE_FOLDER_NAME = 'SALES CALL ANALYSER';
+
     let calls = JSON.parse(localStorage.getItem('sk_calls') || '[]');
     let currentTab = 'all';
 
@@ -103,19 +106,23 @@
       }
     }
 
-    function uploadToDrive(id) {
+    async function uploadToDrive(id) {
       const call = calls.find(c => c.id == id);
       if (!call) return;
 
-      log('Preparing upload for ' + (call.name || call.phone));
-      alert('Google Drive upload will be connected in the next update.\n\nFor now this marks the recording as ready for upload.');
+      log('Starting Google Drive upload for ' + (call.name || call.phone));
 
-      // Mark as ready (later we will do real upload)
-      call.status = 'pending';
-      call.summary = (call.summary || '') + ' (Ready for Drive upload)';
+      // For now show the configured details. Full OAuth flow will be added next.
+      alert(
+        'Google Client ID is configured.\n\n' +
+        'Folder: ' + DRIVE_FOLDER_NAME + '\n\n' +
+        'Next update will complete the sign-in and upload the .amr file.'
+      );
+
+      call.summary = (call.summary || '') + ' (Drive upload configured)';
       saveCalls();
       render();
-      log('Marked ready for Drive upload.');
+      log('Drive upload prepared. Client ID is ready.');
     }
 
     async function scanRecordings() {
@@ -207,7 +214,7 @@
 
     // Start
     render();
-    log('App ready. Tap Scan Recordings.');
+    log('App ready. Client ID configured for Drive upload.');
   </script>
 </body>
 </html>
