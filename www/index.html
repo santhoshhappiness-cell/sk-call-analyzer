@@ -24,6 +24,7 @@
     .analyzed { background: #e8f0fe; color: #1a73e8; }
     .empty { text-align: center; color: #5f6368; padding: 40px 20px; }
     .log { font-size: 0.85rem; color: #5f6368; padding: 8px 12px; background: #fff; margin: 0 12px 12px; border-radius: 8px; }
+    .upload-btn { margin-top: 8px; padding: 8px 12px; background: #34a853; color: white; border: none; border-radius: 6px; font-size: 0.85rem; }
   </style>
 </head>
 <body>
@@ -81,13 +82,14 @@
         list.innerHTML = '<div class="empty">No calls yet.<br>Tap Scan Recordings.</div>';
         return;
       }
-      list.innerHTML = filtered.map(c => `
+      list.innerHTML = filtered.map((c, i) => `
         <div class="card">
           <span class="score">${c.score != null ? c.score + '/10' : '-'}</span>
           <strong>${c.phone || c.name || 'Unknown'}</strong><br>
           <small>${c.date || ''} ${c.time || ''}</small><br>
           <div>${c.summary || 'Waiting for analysis'}</div>
           <span class="status ${c.status || 'pending'}">${(c.status || 'pending').toUpperCase()}</span>
+          ${c.status !== 'uploaded' ? `<br><button class="upload-btn" onclick="uploadToDrive('${c.id}')">Upload to Drive</button>` : ''}
         </div>
       `).join('');
     }
@@ -101,10 +103,24 @@
       }
     }
 
+    function uploadToDrive(id) {
+      const call = calls.find(c => c.id == id);
+      if (!call) return;
+
+      log('Preparing upload for ' + (call.name || call.phone));
+      alert('Google Drive upload will be connected in the next update.\n\nFor now this marks the recording as ready for upload.');
+
+      // Mark as ready (later we will do real upload)
+      call.status = 'pending';
+      call.summary = (call.summary || '') + ' (Ready for Drive upload)';
+      saveCalls();
+      render();
+      log('Marked ready for Drive upload.');
+    }
+
     async function scanRecordings() {
       log('Scanning...');
       try {
-        // Use Capacitor global if available
         const Filesystem = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
         if (!Filesystem) {
           log('Filesystem plugin not available.');
@@ -163,7 +179,7 @@
           if (!calls.some(c => c.name === name)) {
             const now = new Date();
             calls.unshift({
-              id: Date.now() + Math.random(),
+              id: Date.now() + Math.random().toString(36).slice(2),
               name: name,
               phone: name.replace(/\.amr$/i, '').replace(/[_-]/g, ' '),
               date: now.toLocaleDateString(),
