@@ -107,6 +107,18 @@
     window.requestPermissionAndScan = async function() {
       log('Requesting storage permission...');
       try {
+        // Explicitly request permission
+        const perm = await Filesystem.requestPermissions();
+        log('Permission status: ' + JSON.stringify(perm));
+
+        if (perm.publicStorage !== 'granted') {
+          log('Permission not granted. Please allow Files and media in Settings.');
+          alert('Storage permission is required.\n\nGo to Settings → Apps → SK Call Analyzer → Permissions → Files and media → Allow.');
+          return;
+        }
+
+        log('Permission granted. Scanning for .amr files...');
+
         // Try common call recording paths
         const possiblePaths = [
           'Music/Recordings/Call Recordings',
@@ -134,19 +146,19 @@
               break;
             }
           } catch (e) {
-            // Path not found or no permission, continue
+            // Path not found, continue
           }
         }
 
         if (foundFiles.length === 0) {
-          log('No .amr files found in common locations. Permission may be needed or folder path is different.');
-          alert('Could not find Call Recordings folder automatically.\n\nPlease make sure the app has storage permission.\nGo to Settings → Apps → SK Call Analyzer → Permissions → Files and media → Allow.');
+          log('No .amr files found in common locations.');
+          alert('Could not find Call Recordings folder.\n\nMake sure recordings are in Music/Recordings/Call Recordings.');
           return;
         }
 
         log(`Found ${foundFiles.length} .amr file(s) in ${usedPath}`);
 
-        // Add new ones that are not already in the list
+        // Add new ones
         let added = 0;
         for (const file of foundFiles) {
           const name = file.name || file;
@@ -173,14 +185,14 @@
           saveCalls();
           log(`Added ${added} new recording(s). Total: ${calls.length}`);
         } else {
-          log('No new recordings found. All existing files already in the list.');
+          log('No new recordings found.');
         }
         render();
 
       } catch (err) {
         console.error(err);
         log('Error: ' + (err.message || err));
-        alert('Permission error or folder not accessible.\n\nPlease allow Files and media permission for this app in phone Settings, then try again.');
+        alert('Error accessing files. Please check permissions in Settings.');
       }
     };
 
