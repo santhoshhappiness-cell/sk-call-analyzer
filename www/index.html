@@ -101,26 +101,92 @@
       }
     }
 
-    function scanRecordings() {
-      log('Scan button pressed.');
-      alert('Scan button works.\n\nReal folder scanning will be added after we fix the plugin loading issue.');
+    async function scanRecordings() {
+      log('Scanning...');
+      try {
+        // Use Capacitor global if available
+        const Filesystem = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+        if (!Filesystem) {
+          log('Filesystem plugin not available.');
+          alert('Plugin not loaded.\n\nRun npx cap sync and reinstall.');
+          return;
+        }
 
-      // Add a demo entry so the list updates
-      const now = new Date();
-      calls.unshift({
-        id: Date.now(),
-        name: 'Demo_' + now.getTime() + '.amr',
-        phone: 'Demo Recording',
-        date: now.toLocaleDateString(),
-        time: now.toLocaleTimeString(),
-        timestamp: Date.now(),
-        summary: 'Demo entry (plugin fix pending)',
-        status: 'pending',
-        score: null
-      });
-      saveCalls();
-      render();
-      log('Demo recording added.');
+        log('Requesting permission...');
+        const perm = await Filesystem.requestPermissions();
+        log('Permission: ' + JSON.stringify(perm));
+
+        if (!perm || perm.publicStorage !== 'granted') {
+          log('Permission denied.');
+          alert('Allow Storage permission in Settings → Apps → SK Call Analyzer.');
+          return;
+        }
+
+        const paths = [
+          'Music/Recordings/Call Recordings',
+          'Recordings/Call Recordings',
+          'Sounds/Call',
+          'Call',
+          'Recordings'
+        ];
+
+        let found = [];
+        let usedPath = '';
+
+        for (const p of paths) {
+          try {
+            const res = await Filesystem.readdir({
+              path: p,
+              directory: 'EXTERNAL_STORAGE'
+            });
+            const amr = (res.files || []).filter(f => {
+              const name = f.name || f;
+              return name.toLowerCase().endsWith('.amr');
+            });
+            if (amr.length > 0) {
+              found = amr;
+              usedPath = p;
+              break;
+            }
+          } catch (e) {}
+        }
+
+        if (found.length === 0) {
+          log('No .amr files found.');
+          alert('No .amr recordings found in common folders.');
+          return;
+        }
+
+        let added = 0;
+        for (const f of found) {
+          const name = f.name || f;
+          if (!calls.some(c => c.name === name)) {
+            const now = new Date();
+            calls.unshift({
+              id: Date.now() + Math.random(),
+              name: name,
+              phone: name.replace(/\.amr$/i, '').replace(/[_-]/g, ' '),
+              date: now.toLocaleDateString(),
+              time: now.toLocaleTimeString(),
+              timestamp: Date.now(),
+              summary: 'Detected .amr recording',
+              status: 'pending',
+              score: null,
+              path: usedPath + '/' + name
+            });
+            added++;
+          }
+        }
+
+        saveCalls();
+        render();
+        log(added > 0 ? `Added ${added} new recording(s).` : 'No new recordings.');
+
+      } catch (err) {
+        console.error(err);
+        log('Error: ' + (err.message || err));
+        alert('Scan error: ' + (err.message || err));
+      }
     }
 
     // Start
