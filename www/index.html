@@ -38,22 +38,19 @@
   </nav>
 
   <div class="actions">
-    <button class="action" onclick="requestPermissionAndScan()">Scan Recordings</button>
+    <button class="action" onclick="scanRecordings()">Scan Recordings</button>
     <button class="action secondary" onclick="clearList()">Clear List</button>
   </div>
 
-  <div id="statusLog" class="log">Ready. Tap "Scan Recordings" to request permission and look for .amr files.</div>
+  <div id="statusLog" class="log">Ready. Tap Scan Recordings.</div>
   <div id="list"></div>
 
-  <script type="module">
-    import { Filesystem, Directory } from '@capacitor/filesystem';
-
+  <script>
     let calls = JSON.parse(localStorage.getItem('sk_calls') || '[]');
     let currentTab = 'all';
 
     function log(msg) {
       document.getElementById('statusLog').textContent = msg;
-      console.log(msg);
     }
 
     function saveCalls() {
@@ -74,14 +71,14 @@
       } else if (currentTab === 'high') {
         filtered = filtered.filter(c => (c.score || 0) >= 8);
       }
-      return filtered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      return filtered;
     }
 
     function render() {
       const list = document.getElementById('list');
       const filtered = getFiltered();
       if (filtered.length === 0) {
-        list.innerHTML = '<div class="empty">No calls in this tab.<br>Tap Scan Recordings to detect .amr files.</div>';
+        list.innerHTML = '<div class="empty">No calls yet.<br>Tap Scan Recordings.</div>';
         return;
       }
       list.innerHTML = filtered.map(c => `
@@ -95,110 +92,40 @@
       `).join('');
     }
 
-    window.clearList = function() {
-      if (confirm('Clear all calls from the list?')) {
+    function clearList() {
+      if (confirm('Clear all calls?')) {
         calls = [];
         saveCalls();
         render();
         log('List cleared.');
       }
-    };
+    }
 
-    window.requestPermissionAndScan = async function() {
-      log('Requesting storage permission...');
-      try {
-        // Explicitly request permission
-        const perm = await Filesystem.requestPermissions();
-        log('Permission status: ' + JSON.stringify(perm));
+    function scanRecordings() {
+      log('Scan button pressed!');
+      alert('Scan button works!\n\nNext we will add real folder scanning.');
+      
+      // Add a demo entry so you can see the list update
+      const now = new Date();
+      calls.unshift({
+        id: Date.now(),
+        name: 'Demo_' + now.getTime() + '.amr',
+        phone: 'Demo Recording',
+        date: now.toLocaleDateString(),
+        time: now.toLocaleTimeString(),
+        timestamp: Date.now(),
+        summary: 'Demo entry from Scan button',
+        status: 'pending',
+        score: null
+      });
+      saveCalls();
+      render();
+      log('Demo recording added. Button is working.');
+    }
 
-        if (perm.publicStorage !== 'granted') {
-          log('Permission not granted. Please allow Files and media in Settings.');
-          alert('Storage permission is required.\n\nGo to Settings → Apps → SK Call Analyzer → Permissions → Files and media → Allow.');
-          return;
-        }
-
-        log('Permission granted. Scanning for .amr files...');
-
-        // Try common call recording paths
-        const possiblePaths = [
-          'Music/Recordings/Call Recordings',
-          'Recordings/Call',
-          'Sounds/Call',
-          'Call',
-          'Recordings'
-        ];
-
-        let foundFiles = [];
-        let usedPath = '';
-
-        for (const relPath of possiblePaths) {
-          try {
-            const result = await Filesystem.readdir({
-              path: relPath,
-              directory: Directory.ExternalStorage
-            });
-            const amrFiles = (result.files || []).filter(f => 
-              (f.name || f).toLowerCase().endsWith('.amr')
-            );
-            if (amrFiles.length > 0) {
-              foundFiles = amrFiles;
-              usedPath = relPath;
-              break;
-            }
-          } catch (e) {
-            // Path not found, continue
-          }
-        }
-
-        if (foundFiles.length === 0) {
-          log('No .amr files found in common locations.');
-          alert('Could not find Call Recordings folder.\n\nMake sure recordings are in Music/Recordings/Call Recordings.');
-          return;
-        }
-
-        log(`Found ${foundFiles.length} .amr file(s) in ${usedPath}`);
-
-        // Add new ones
-        let added = 0;
-        for (const file of foundFiles) {
-          const name = file.name || file;
-          const exists = calls.some(c => c.name === name);
-          if (!exists) {
-            const now = new Date();
-            calls.unshift({
-              id: Date.now() + Math.random().toString(36).slice(2),
-              name: name,
-              phone: name.replace(/\.amr$/i, '').replace(/[_-]/g, ' '),
-              date: now.toLocaleDateString(),
-              time: now.toLocaleTimeString(),
-              timestamp: Date.now(),
-              summary: 'Detected .amr recording. Ready for upload & analysis.',
-              status: 'pending',
-              score: null,
-              path: usedPath + '/' + name
-            });
-            added++;
-          }
-        }
-
-        if (added > 0) {
-          saveCalls();
-          log(`Added ${added} new recording(s). Total: ${calls.length}`);
-        } else {
-          log('No new recordings found.');
-        }
-        render();
-
-      } catch (err) {
-        console.error(err);
-        log('Error: ' + (err.message || err));
-        alert('Error accessing files. Please check permissions in Settings.');
-      }
-    };
-
-    // Initial render
+    // Start
     render();
-    log('App ready. Tap "Scan Recordings" to look for call recordings.');
+    log('App ready. Tap Scan Recordings.');
   </script>
 </body>
 </html>
