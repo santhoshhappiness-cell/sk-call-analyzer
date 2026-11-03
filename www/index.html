@@ -101,26 +101,89 @@
       }
     }
 
-    function scanRecordings() {
-      log('Scan button pressed!');
-      alert('Scan button works!\n\nNext we will add real folder scanning.');
-      
-      // Add a demo entry so you can see the list update
-      const now = new Date();
-      calls.unshift({
-        id: Date.now(),
-        name: 'Demo_' + now.getTime() + '.amr',
-        phone: 'Demo Recording',
-        date: now.toLocaleDateString(),
-        time: now.toLocaleTimeString(),
-        timestamp: Date.now(),
-        summary: 'Demo entry from Scan button',
-        status: 'pending',
-        score: null
-      });
-      saveCalls();
-      render();
-      log('Demo recording added. Button is working.');
+    async function scanRecordings() {
+      log('Scanning...');
+      try {
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+
+        // Request permission
+        const perm = await Filesystem.requestPermissions();
+        log('Permission: ' + (perm.publicStorage || 'unknown'));
+
+        if (perm.publicStorage !== 'granted') {
+          log('Permission denied. Allow Files and media in Settings.');
+          alert('Please allow Files and media permission for this app in phone Settings, then try again.');
+          return;
+        }
+
+        // Scan known paths
+        const paths = [
+          'Music/Recordings/Call Recordings',
+          'Recordings/Call Recordings',
+          'Sounds/Call',
+          'Call',
+          'Recordings'
+        ];
+
+        let found = [];
+        let usedPath = '';
+
+        for (const p of paths) {
+          try {
+            const res = await Filesystem.readdir({
+              path: p,
+              directory: Directory.ExternalStorage
+            });
+            const amr = (res.files || []).filter(f => {
+              const name = f.name || f;
+              return name.toLowerCase().endsWith('.amr');
+            });
+            if (amr.length > 0) {
+              found = amr;
+              usedPath = p;
+              break;
+            }
+          } catch (e) {
+            // continue
+          }
+        }
+
+        if (found.length === 0) {
+          log('No .amr files found in common folders.');
+          alert('No .amr recordings found.\n\nCheck that files are in Music/Recordings/Call Recordings.');
+          return;
+        }
+
+        let added = 0;
+        for (const f of found) {
+          const name = f.name || f;
+          if (!calls.some(c => c.name === name)) {
+            const now = new Date();
+            calls.unshift({
+              id: Date.now() + Math.random(),
+              name: name,
+              phone: name.replace(/\.amr$/i, '').replace(/[_-]/g, ' '),
+              date: now.toLocaleDateString(),
+              time: now.toLocaleTimeString(),
+              timestamp: Date.now(),
+              summary: 'Detected .amr recording',
+              status: 'pending',
+              score: null,
+              path: usedPath + '/' + name
+            });
+            added++;
+          }
+        }
+
+        saveCalls();
+        render();
+        log(added > 0 ? `Added ${added} new recording(s).` : 'No new recordings.');
+
+      } catch (err) {
+        console.error(err);
+        log('Error: ' + (err.message || err));
+        alert('Could not scan files. Make sure storage permission is allowed.');
+      }
     }
 
     // Start
