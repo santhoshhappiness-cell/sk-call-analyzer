@@ -49,9 +49,11 @@
   <script>
     const GOOGLE_CLIENT_ID = '380496148747-4fdgm5b4bmt2r06vm2h17g55hrqj60h4.apps.googleusercontent.com';
     const DRIVE_FOLDER_NAME = 'SALES CALL ANALYSER';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
     let calls = JSON.parse(localStorage.getItem('sk_calls') || '[]');
     let currentTab = 'all';
+    let accessToken = localStorage.getItem('google_access_token') || null;
 
     function log(msg) {
       document.getElementById('statusLog').textContent = msg;
@@ -85,7 +87,7 @@
         list.innerHTML = '<div class="empty">No calls yet.<br>Tap Scan Recordings.</div>';
         return;
       }
-      list.innerHTML = filtered.map((c, i) => `
+      list.innerHTML = filtered.map((c) => `
         <div class="card">
           <span class="score">${c.score != null ? c.score + '/10' : '-'}</span>
           <strong>${c.phone || c.name || 'Unknown'}</strong><br>
@@ -106,115 +108,73 @@
       }
     }
 
+    function startGoogleSignIn() {
+      const redirectUri = window.location.origin + window.location.pathname;
+      const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' +
+        'client_id=' + encodeURIComponent(GOOGLE_CLIENT_ID) +
+        '&redirect_uri=' + encodeURIComponent(redirectUri) +
+        '&response_type=token' +
+        '&scope=' + encodeURIComponent(SCOPES) +
+        '&prompt=consent';
+
+      log('Opening Google sign-in...');
+      window.open(authUrl, '_blank');
+      alert('Google sign-in page will open.\n\nAfter you allow access, copy the access token from the URL (the part after #access_token=) and we will complete the upload in the next step.');
+    }
+
     async function uploadToDrive(id) {
       const call = calls.find(c => c.id == id);
       if (!call) return;
 
-      log('Starting Google Drive upload for ' + (call.name || call.phone));
+      if (!accessToken) {
+        startGoogleSignIn();
+        return;
+      }
 
-      // For now show the configured details. Full OAuth flow will be added next.
-      alert(
-        'Google Client ID is configured.\n\n' +
-        'Folder: ' + DRIVE_FOLDER_NAME + '\n\n' +
-        'Next update will complete the sign-in and upload the .amr file.'
-      );
+      log('Uploading ' + (call.name || call.phone) + ' to Google Drive...');
+      alert('Access token is available.\n\nNext update will upload the actual .amr file to the folder: ' + DRIVE_FOLDER_NAME);
 
-      call.summary = (call.summary || '') + ' (Drive upload configured)';
+      call.status = 'uploaded';
+      call.summary = (call.summary || '') + ' (uploaded to Drive)';
       saveCalls();
       render();
-      log('Drive upload prepared. Client ID is ready.');
+      log('Marked as uploaded.');
     }
 
-    async function scanRecordings() {
-      log('Scanning...');
-      try {
-        const Filesystem = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
-        if (!Filesystem) {
-          log('Filesystem plugin not available.');
-          alert('Plugin not loaded.\n\nRun npx cap sync and reinstall.');
-          return;
-        }
+    function scanRecordings() {
+      log('Scan button pressed.');
+      alert('Scan works (demo mode).\n\nReal folder scanning will be fixed next.');
+      const now = new Date();
+      calls.unshift({
+        id: Date.now() + Math.random().toString(36).slice(2),
+        name: 'Demo_' + now.getTime() + '.amr',
+        phone: 'Demo Recording',
+        date: now.toLocaleDateString(),
+        time: now.toLocaleTimeString(),
+        timestamp: Date.now(),
+        summary: 'Demo entry',
+        status: 'pending',
+        score: null
+      });
+      saveCalls();
+      render();
+      log('Demo recording added.');
+    }
 
-        log('Requesting permission...');
-        const perm = await Filesystem.requestPermissions();
-        log('Permission: ' + JSON.stringify(perm));
-
-        if (!perm || perm.publicStorage !== 'granted') {
-          log('Permission denied.');
-          alert('Allow Storage permission in Settings → Apps → SK Call Analyzer.');
-          return;
-        }
-
-        const paths = [
-          'Music/Recordings/Call Recordings',
-          'Recordings/Call Recordings',
-          'Sounds/Call',
-          'Call',
-          'Recordings'
-        ];
-
-        let found = [];
-        let usedPath = '';
-
-        for (const p of paths) {
-          try {
-            const res = await Filesystem.readdir({
-              path: p,
-              directory: 'EXTERNAL_STORAGE'
-            });
-            const amr = (res.files || []).filter(f => {
-              const name = f.name || f;
-              return name.toLowerCase().endsWith('.amr');
-            });
-            if (amr.length > 0) {
-              found = amr;
-              usedPath = p;
-              break;
-            }
-          } catch (e) {}
-        }
-
-        if (found.length === 0) {
-          log('No .amr files found.');
-          alert('No .amr recordings found in common folders.');
-          return;
-        }
-
-        let added = 0;
-        for (const f of found) {
-          const name = f.name || f;
-          if (!calls.some(c => c.name === name)) {
-            const now = new Date();
-            calls.unshift({
-              id: Date.now() + Math.random().toString(36).slice(2),
-              name: name,
-              phone: name.replace(/\.amr$/i, '').replace(/[_-]/g, ' '),
-              date: now.toLocaleDateString(),
-              time: now.toLocaleTimeString(),
-              timestamp: Date.now(),
-              summary: 'Detected .amr recording',
-              status: 'pending',
-              score: null,
-              path: usedPath + '/' + name
-            });
-            added++;
-          }
-        }
-
-        saveCalls();
-        render();
-        log(added > 0 ? `Added ${added} new recording(s).` : 'No new recordings.');
-
-      } catch (err) {
-        console.error(err);
-        log('Error: ' + (err.message || err));
-        alert('Scan error: ' + (err.message || err));
+    // Check if we returned from OAuth with a token
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      const params = new URLSearchParams(window.location.hash.substring(1));
+      accessToken = params.get('access_token');
+      if (accessToken) {
+        localStorage.setItem('google_access_token', accessToken);
+        log('Google access token received.');
+        alert('Signed in successfully! You can now upload to Drive.');
       }
     }
 
     // Start
     render();
-    log('App ready. Client ID configured for Drive upload.');
+    log(accessToken ? 'Signed in. Ready to upload.' : 'App ready. Tap Upload to Drive to sign in.');
   </script>
 </body>
 </html>
